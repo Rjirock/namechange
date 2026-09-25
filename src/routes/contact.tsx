@@ -137,12 +137,6 @@ function ContactPage() {
 
               {[
                 {
-                  tag: "Corporate Head Office",
-                  icon: Building2,
-                  addr: "Kh No-14/11, Street No-36, Chandan Vihar, Burari, Delhi - 110084",
-                  hours: "Mon - Sat: 09:30 AM - 06:30 PM",
-                },
-                {
                   tag: "Regional Branch Desk",
                   icon: MapPin,
                   addr: "Arya Samaj Rd, Near Gupta Jewellery Shop, Block J, Uttam Nagar, Delhi - 110059",

@@ -230,13 +230,6 @@ export function SiteFooter() {
               <div className="w-2 h-2 bg-amber-500 rounded-full" /> Office Locations
             </h4>
             <ul className="space-y-5 text-sm font-medium text-slate-400">
-              <li className="flex gap-3 items-start">
-                <MapPin className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-                <p className="leading-relaxed">
-                  <span className="font-bold text-white block text-xs uppercase tracking-wider mb-1">Corporate Head Office:</span>
-                  Kh No-14/11, Street No-36, Chandan Vihar, Burari, Delhi - 110084
-                </p>
-              </li>
               <li className="flex gap-3 items-start border-t border-slate-800 pt-4">
                 <MapPin className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
                 <p className="leading-relaxed">
