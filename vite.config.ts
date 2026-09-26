@@ -5,17 +5,20 @@ import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
-  base: "./",
+  base: "/",
+
   plugins: [
-    TanStackRouterVite({ autoCodeSplitting: true }),
+    TanStackRouterVite({
+      autoCodeSplitting: true,
+    }),
     react(),
     tailwindcss(),
     tsconfigPaths(),
   ],
+
   server: {
-    // Ye line aapke infinite reload ko band kar degi
     watch: {
-      ignored: ['**/server/**'], 
+      ignored: ["**/server/**"],
     },
   },
 });
