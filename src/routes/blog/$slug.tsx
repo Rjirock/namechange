@@ -136,11 +136,10 @@ function SingleBlogPage() {
         )}
         
         {/* Article Body - Highly readable typography */}
-        <div className="prose prose-lg prose-slate max-w-none prose-headings:font-black prose-headings:tracking-tight prose-p:text-slate-700 prose-p:leading-loose prose-a:font-bold prose-a:text-indigo-600 hover:prose-a:text-indigo-500 prose-img:rounded-xl">
-          {blog.excerpt.split('\n').map((para: string, i: number) => (
-            para.trim() ? <p key={i}>{para}</p> : null
-          ))}
-        </div>
+        <div
+          className="blog-rich-content max-w-none"
+          dangerouslySetInnerHTML={{ __html: blog.excerpt || "" }}
+        />
 
         {/* Premium CTA Box at the bottom */}
         <div className="mt-16 p-8 md:p-10 bg-slate-900 rounded-3xl text-center relative overflow-hidden shadow-2xl">

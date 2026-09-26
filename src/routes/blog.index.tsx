@@ -3,6 +3,25 @@ import { useState, useEffect } from "react";
 import { Calendar, User, ArrowRight, Loader2 } from "lucide-react";
 import { PageHero } from "@/components/site";
 
+function getPlainBlogText(html: string = "") {
+  if (!html) return "";
+
+  let value = html;
+
+  // Handles both real HTML and older posts where the HTML was stored as
+  // encoded text such as &lt;h2&gt;Heading&lt;/h2&gt;.
+  for (let pass = 0; pass < 3; pass += 1) {
+    const container = document.createElement("div");
+    container.innerHTML = value;
+    const nextValue = container.textContent || container.innerText || "";
+
+    if (nextValue === value) break;
+    value = nextValue;
+  }
+
+  return value.replace(/\s+/g, " ").trim();
+}
+
 export const Route = createFileRoute("/blog/")({
   meta: () => [{ title: "Blog & Legal Updates | Name Change Expert" }],
   component: BlogPage,
@@ -93,7 +112,7 @@ function BlogPage() {
                   </h3>
 
                   <p className="text-sm text-slate-600 font-medium line-clamp-3 mb-6 flex-grow">
-                    {blog.excerpt}
+                    {getPlainBlogText(blog.excerpt)}
                   </p>
 
                   <div className="mt-auto pt-4 border-t border-slate-100">

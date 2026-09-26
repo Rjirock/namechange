@@ -4,7 +4,9 @@ import {
   Users, FileText, PlusCircle, RefreshCcw, LayoutDashboard,
   Calendar, ShieldCheck, Lock, User, KeyRound, LogOut,
   TrendingUp, Clock, Search, CheckCircle2, Image as ImageIcon,
-  Edit, Trash2, X, MoreVertical
+  Edit, Trash2, X, MoreVertical, Bold, Italic, Underline, Link2, Unlink,
+  List, ListOrdered, AlignLeft, AlignCenter, AlignRight, Undo2, Redo2,
+  Palette, RemoveFormatting
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
@@ -281,6 +283,306 @@ function LeadsManager() {
 // ---------------------------------------------------------
 // 2. ULTIMATE BLOG MANAGER (With View, Create, Edit, Delete)
 // ---------------------------------------------------------
+function RichTextEditor({
+  initialValue,
+  onChange,
+}: {
+  initialValue: string;
+  onChange: (html: string) => void;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef<{ stack: string[]; index: number }>({
+    stack: [],
+    index: -1,
+  });
+  const isRestoringHistoryRef = useRef(false);
+  const lastEditorValueRef = useRef<string | null>(null);
+
+  const normalizeHtml = (value: string) => {
+    if (!value?.trim()) return "<p><br></p>";
+    if (/<[a-z][\s\S]*>/i.test(value)) return value;
+    return value
+      .split(/\r?\n/)
+      .filter((line) => line.trim())
+      .map(
+        (line) =>
+          `<p>${line
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")}</p>`,
+      )
+      .join("") || "<p><br></p>";
+  };
+
+  const getCurrentHtml = () => editorRef.current?.innerHTML || "<p><br></p>";
+
+  const recordHistory = (html = getCurrentHtml()) => {
+    if (isRestoringHistoryRef.current) return;
+
+    const history = historyRef.current;
+    const current = history.stack[history.index];
+
+    if (current === html) return;
+
+    // If the user edited after an undo, discard the redo branch.
+    const nextStack = history.stack.slice(0, history.index + 1);
+    nextStack.push(html);
+
+    // Keep the editor responsive even for very long articles.
+    const MAX_HISTORY = 100;
+    const trimmedStack =
+      nextStack.length > MAX_HISTORY
+        ? nextStack.slice(nextStack.length - MAX_HISTORY)
+        : nextStack;
+
+    historyRef.current = {
+      stack: trimmedStack,
+      index: trimmedStack.length - 1,
+    };
+  };
+
+  useEffect(() => {
+    const normalized = normalizeHtml(initialValue);
+    if (!editorRef.current) return;
+
+    // Do not rewrite innerHTML for changes that originated from this editor.
+    // Rewriting innerHTML on every keystroke destroys the browser selection/caret,
+    // which is why pressing Enter or typing further used to jump the cursor.
+    if (lastEditorValueRef.current === normalized) {
+      lastEditorValueRef.current = null;
+      return;
+    }
+
+    editorRef.current.innerHTML = normalized;
+    historyRef.current = {
+      stack: [normalized],
+      index: 0,
+    };
+    lastEditorValueRef.current = null;
+  }, [initialValue]);
+
+  const notifyChange = () => {
+    const html = getCurrentHtml();
+    lastEditorValueRef.current = html;
+    onChange(html);
+  };
+
+  const runCommand = (command: string, value?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    const html = getCurrentHtml();
+    recordHistory(html);
+    lastEditorValueRef.current = html;
+    onChange(html);
+  };
+
+  const formatBlock = (tag: string) => {
+    editorRef.current?.focus();
+    document.execCommand("formatBlock", false, tag);
+    const html = getCurrentHtml();
+    recordHistory(html);
+    lastEditorValueRef.current = html;
+    onChange(html);
+  };
+
+  const insertLink = () => {
+    editorRef.current?.focus();
+    const url = window.prompt("Enter the link URL:", "https://");
+    if (!url || url === "https://") return;
+
+    const href = /^(https?:\/\/|mailto:|tel:|\/|#)/i.test(url)
+      ? url
+      : `https://${url}`;
+
+    document.execCommand("createLink", false, href);
+
+    editorRef.current?.querySelectorAll("a").forEach((anchor) => {
+      if (anchor.getAttribute("href") === href) {
+        const isInternal =
+          href.startsWith("/") ||
+          href.startsWith("#") ||
+          href.startsWith("mailto:") ||
+          href.startsWith("tel:");
+
+        if (isInternal) {
+          anchor.removeAttribute("target");
+          anchor.removeAttribute("rel");
+        } else {
+          anchor.setAttribute("target", "_blank");
+          anchor.setAttribute("rel", "noopener noreferrer");
+        }
+      }
+    });
+
+    const html = getCurrentHtml();
+    recordHistory(html);
+    lastEditorValueRef.current = html;
+    onChange(html);
+  };
+
+  const undo = () => {
+    const history = historyRef.current;
+    if (history.index <= 0 || !editorRef.current) return;
+
+    const nextIndex = history.index - 1;
+    const nextHtml = history.stack[nextIndex];
+
+    isRestoringHistoryRef.current = true;
+    editorRef.current.innerHTML = nextHtml;
+    historyRef.current.index = nextIndex;
+    lastEditorValueRef.current = nextHtml;
+    onChange(nextHtml);
+    requestAnimationFrame(() => {
+      isRestoringHistoryRef.current = false;
+      editorRef.current?.focus();
+    });
+  };
+
+  const redo = () => {
+    const history = historyRef.current;
+    if (history.index >= history.stack.length - 1 || !editorRef.current) return;
+
+    const nextIndex = history.index + 1;
+    const nextHtml = history.stack[nextIndex];
+
+    isRestoringHistoryRef.current = true;
+    editorRef.current.innerHTML = nextHtml;
+    historyRef.current.index = nextIndex;
+    lastEditorValueRef.current = nextHtml;
+    onChange(nextHtml);
+    requestAnimationFrame(() => {
+      isRestoringHistoryRef.current = false;
+      editorRef.current?.focus();
+    });
+  };
+
+  const ToolbarButton = ({
+    title,
+    onClick,
+    children,
+    disabled = false,
+  }: {
+    title: string;
+    onClick: () => void;
+    children: React.ReactNode;
+    disabled?: boolean;
+  }) => (
+    <button
+      type="button"
+      title={title}
+      disabled={disabled}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className="h-9 min-w-9 px-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-slate-600 disabled:hover:border-slate-200"
+    >
+      {children}
+    </button>
+  );
+
+  const canUndo = historyRef.current.index > 0;
+  const canRedo =
+    historyRef.current.index >= 0 &&
+    historyRef.current.index < historyRef.current.stack.length - 1;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm focus-within:border-indigo-400 focus-within:ring-4 focus-within:ring-indigo-500/10">
+      <div className="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-2">
+        <select
+          defaultValue="p"
+          onChange={(e) => formatBlock(e.target.value)}
+          className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-indigo-400"
+          title="Text style"
+        >
+          <option value="p">Paragraph</option>
+          <option value="h1">Heading 1</option>
+          <option value="h2">Heading 2</option>
+          <option value="h3">Heading 3</option>
+          <option value="h4">Heading 4</option>
+          <option value="h5">Heading 5</option>
+          <option value="h6">Heading 6</option>
+        </select>
+
+        <div className="w-px h-6 bg-slate-200 mx-1" />
+
+        <ToolbarButton title="Bold" onClick={() => runCommand("bold")}>
+          <Bold className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton title="Italic" onClick={() => runCommand("italic")}>
+          <Italic className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton title="Underline" onClick={() => runCommand("underline")}>
+          <Underline className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton title="Remove formatting" onClick={() => runCommand("removeFormat")}>
+          <RemoveFormatting className="w-4 h-4" />
+        </ToolbarButton>
+
+        <div className="w-px h-6 bg-slate-200 mx-1" />
+
+        <ToolbarButton title="Bulleted list" onClick={() => runCommand("insertUnorderedList")}>
+          <List className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton title="Numbered list" onClick={() => runCommand("insertOrderedList")}>
+          <ListOrdered className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton title="Align left" onClick={() => runCommand("justifyLeft")}>
+          <AlignLeft className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton title="Align center" onClick={() => runCommand("justifyCenter")}>
+          <AlignCenter className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton title="Align right" onClick={() => runCommand("justifyRight")}>
+          <AlignRight className="w-4 h-4" />
+        </ToolbarButton>
+
+        <div className="w-px h-6 bg-slate-200 mx-1" />
+
+        <label
+          title="Text color"
+          onMouseDown={(e) => e.preventDefault()}
+          className="h-9 px-2 rounded-lg border border-slate-200 bg-white hover:bg-indigo-50 hover:border-indigo-200 cursor-pointer flex items-center gap-1.5"
+        >
+          <Palette className="w-4 h-4 text-slate-600" />
+          <input
+            type="color"
+            defaultValue="#111827"
+            onChange={(e) => runCommand("foreColor", e.target.value)}
+            className="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer"
+            aria-label="Text color"
+          />
+        </label>
+
+        <ToolbarButton title="Insert / edit link" onClick={insertLink}>
+          <Link2 className="w-4 h-4" />
+        </ToolbarButton>
+        <ToolbarButton title="Remove link" onClick={() => runCommand("unlink")}>
+          <Unlink className="w-4 h-4" />
+        </ToolbarButton>
+
+        <div className="w-px h-6 bg-slate-200 mx-1" />
+      
+      </div>
+
+      <div className="px-5 py-4 bg-white border-b border-slate-100 text-[11px] font-bold text-slate-400">
+        Select text and use the toolbar to create headings, paragraphs, links, lists, alignment, or custom colors.
+      </div>
+
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={() => {
+          const html = getCurrentHtml();
+          recordHistory(html);
+          notifyChange();
+        }}
+        className="blog-editor min-h-[420px] px-6 py-5 outline-none text-[16px] leading-8 text-slate-700 max-w-none"
+        data-placeholder="Start writing your article here..."
+      />
+    </div>
+  );
+}
+
 function BlogManager() {
   const [blogs, setBlogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -319,6 +621,13 @@ function BlogManager() {
   // Submit Logic (Handles both CREATE and EDIT)
   async function handleSaveBlog(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    const plainText = formData.excerpt.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").trim();
+    if (!plainText) {
+      setStatus("error");
+      return;
+    }
+
     setStatus("loading");
     
     const formPayload = new FormData();
@@ -478,6 +787,11 @@ function BlogManager() {
                 <CheckCircle2 className="w-4 h-4" /> Saved
               </span>
             )}
+            {status === "error" && (
+              <span className="text-xs font-black uppercase tracking-wider text-red-600 bg-red-50 px-4 py-2 rounded-xl border border-red-200">
+                Please add article content and try again.
+              </span>
+            )}
           </div>
 
           <form onSubmit={handleSaveBlog} className="p-8 space-y-8" data-gramm="false">
@@ -492,12 +806,12 @@ function BlogManager() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Article Body (Supports HTML)</label>
-                <textarea
-                  name="excerpt" rows={12} required value={formData.excerpt} onChange={handleChange}
-                  placeholder="Start drafting the content here..."
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all font-medium text-slate-700 placeholder-slate-300 resize-y leading-relaxed"
-                ></textarea>
+                <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Article Body (Visual Editor)</label>
+                <RichTextEditor
+                  key={`${view}-${editingBlogId || "new"}`}
+                  initialValue={formData.excerpt}
+                  onChange={(html) => setFormData((prev) => ({ ...prev, excerpt: html }))}
+                />
               </div>
             </div>
 
