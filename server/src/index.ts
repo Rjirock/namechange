@@ -6,6 +6,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { Resend } from 'resend';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -26,14 +27,70 @@ app.use(cors({ origin: "*", methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 app.use('/uploads', express.static(uploadDir));
 app.use('/server/uploads', express.static(uploadDir));
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
+// IMPORTANT: Render's default filesystem is ephemeral. Store new blog images in
+// Cloudinary instead of writing them to server/uploads, so images survive restarts,
+// deploys, and free-service spin-downs. Multer keeps the file in memory only long
+// enough to send it to Cloudinary.
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
+    cb(null, allowed.includes(file.mimetype));
+  },
 });
-const upload = multer({ storage: storage });
+
+function createCloudinarySignature(params: Record<string, string | number>): string {
+  const payload = Object.keys(params)
+    .sort()
+    .map((key) => `${key}=${params[key]}`)
+    .join('&');
+
+  const secret = process.env.CLOUDINARY_API_SECRET;
+  if (!secret) {
+    throw new Error('CLOUDINARY_API_SECRET is not configured');
+  }
+
+  return crypto.createHash('sha1').update(payload + secret).digest('hex');
+}
+
+async function uploadImageToCloudinary(file: Express.Multer.File): Promise<string> {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  const folder = process.env.CLOUDINARY_FOLDER || 'name-change-expert/blogs';
+
+  if (!cloudName || !apiKey || !apiSecret) {
+    throw new Error(
+      'Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.'
+    );
+  }
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = createCloudinarySignature({ folder, timestamp });
+  const base64File = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+
+  const form = new FormData();
+  form.append('file', base64File);
+  form.append('api_key', apiKey);
+  form.append('timestamp', String(timestamp));
+  form.append('folder', folder);
+  form.append('signature', signature);
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+    method: 'POST',
+    body: form,
+  });
+
+  const data = await response.json() as { secure_url?: string; error?: { message?: string } };
+
+  if (!response.ok || !data.secure_url) {
+    throw new Error(data.error?.message || 'Cloudinary image upload failed');
+  }
+
+  return data.secure_url;
+}
 
 // Decode HTML entities that may have been stored by an older version of the editor.
 // Example: &lt;h1&gt;Heading&lt;/h1&gt; -> <h1>Heading</h1>
@@ -140,19 +197,19 @@ apiRouter.get('/contact', async (req: Request, res: Response): Promise<void> => 
   }
 });
 
-const getBaseUrl = () => process.env.BASE_URL || `https://namechangeexpert.in/server`;
 
 apiRouter.post('/blogs', upload.single('cover_image'), async (req: Request, res: Response): Promise<void> => {
   try {
     const { title, excerpt, author, slug } = req.body;
     const safeExcerpt = sanitizeBlogHtml(excerpt);
-    let imageUrl = req.file ? `${getBaseUrl()}/uploads/${req.file.filename}` : '';
+    const imageUrl = req.file ? await uploadImageToCloudinary(req.file) : '';
     const newBlog = await prisma.blogPost.create({
       data: { title, excerpt: safeExcerpt, cover_image: imageUrl, author, slug },
     });
     res.status(201).json({ status: 'success', data: newBlog });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: 'Server error' });
+    console.error('Create blog error:', error);
+    res.status(500).json({ status: 'error', message: error instanceof Error ? error.message : 'Server error' });
   }
 });
 
@@ -174,14 +231,15 @@ apiRouter.put('/blogs/:id', upload.single('cover_image'), async (req: Request, r
     const existingBlog = await prisma.blogPost.findUnique({ where: { id } });
     if (!existingBlog) { res.status(404).json({ message: 'Blog not found' }); return; }
 
-    let imageUrl = req.file ? `${getBaseUrl()}/uploads/${req.file.filename}` : existingBlog.cover_image;
+    const imageUrl = req.file ? await uploadImageToCloudinary(req.file) : existingBlog.cover_image;
     const updatedBlog = await prisma.blogPost.update({
       where: { id },
       data: { title, excerpt: safeExcerpt, author, slug, cover_image: imageUrl },
     });
     res.status(200).json({ status: 'success', data: updatedBlog });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: 'Failed to update' });
+    console.error('Update blog error:', error);
+    res.status(500).json({ status: 'error', message: error instanceof Error ? error.message : 'Failed to update' });
   }
 });
 

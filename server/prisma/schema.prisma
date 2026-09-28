@@ -13,7 +13,7 @@ model ContactMessage {
   phone     String
   email     String   @default("N/A")
   service   String
-  message   String?  
+  message   String?
   createdAt DateTime @default(now())
 }
 

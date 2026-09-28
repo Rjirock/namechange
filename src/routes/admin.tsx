@@ -9,6 +9,17 @@ import {
   Palette, RemoveFormatting
 } from "lucide-react";
 
+// Backend API configuration.
+// Local development: set VITE_API_BASE_URL=http://localhost:5000 in the frontend .env,
+// or it will automatically use localhost:5000 when opened on localhost.
+// Production: VITE_API_BASE_URL should be set to https://namechange-hocg.onrender.com
+// on Vercel, with a production fallback to the Render backend.
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:5000"
+    : "https://namechange-hocg.onrender.com");
+
 export const Route = createFileRoute("/admin")({
   meta: () => [{ title: "Workspace CRM | Secure Access" }],
   component: AdminAuthWrapper,
@@ -190,7 +201,7 @@ function LeadsManager() {
   const fetchLeads = async () => {
     setLoading(true);
     try {
-      const res = await fetch("https://namechange-hocg.onrender.com/api/contact");
+      const res = await fetch(`${API_BASE_URL}/api/contact`);
       const data = await res.json();
       setLeads(data);
     } catch (error) {
@@ -597,7 +608,7 @@ function BlogManager() {
   const fetchBlogs = async () => {
     setLoading(true);
     try {
-      const res = await fetch("https://namechange-hocg.onrender.com/api/blogs");
+      const res = await fetch(`${API_BASE_URL}/api/blogs`);
       const data = await res.json();
       setBlogs(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -643,7 +654,7 @@ function BlogManager() {
     if (selectedImage) formPayload.append("cover_image", selectedImage);
 
     try {
-      const url = view === "edit" ? `https://namechange-hocg.onrender.com/api/blogs/${editingBlogId}` : "https://namechange-hocg.onrender.com/api/blogs";
+      const url = view === "edit" ? `${API_BASE_URL}/api/blogs/${editingBlogId}` : `${API_BASE_URL}/api/blogs`;
       const method = view === "edit" ? "PUT" : "POST";
 
       const response = await fetch(url, { method, body: formPayload });
@@ -665,7 +676,7 @@ function BlogManager() {
   async function handleDelete(id: string) {
     if(!window.confirm("Are you sure you want to permanently delete this article?")) return;
     try {
-      const res = await fetch(`https://namechange-hocg.onrender.com/api/blogs/${id}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE_URL}/api/blogs/${id}`, { method: "DELETE" });
       if(res.ok) fetchBlogs();
     } catch (error) {
       alert("Failed to delete.");
